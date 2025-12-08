@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Market Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h2 { margin-bottom: 5px; }
+        .status { font-size: 0.8em; color: #888; margin-bottom: 20px; }
+        .chart-container {
+            position: relative;
+            height: 60vh;
+            width: 80vw;
+            background: #252525;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Trash Market Monitor</h2>
+    <div class="status">Status: <span id="connection-status" style="color: orange">Connecting...</span></div>
+
+    <div class="chart-container">
+        <canvas id="stockChart"></canvas>
+    </div>
+
+    <script>
+        // --- 1. Configuration ---
+        const MAX_DATA_POINTS = 50; // Keep chart scrolling, don't squish data
+        const CTX = document.getElementById('stockChart').getContext('2d');
+        
+        // Define colors for specific tickers
+        const COLORS = {
+            'URTH': '#36A2EB', // Blue
+            'AAPL': '#FF6384', // Red
+            'VT':   '#4BC0C0'  // Green
+        };
+
+        // --- 2. Initialize Chart.js ---
+        const chart = new Chart(CTX, {
+            type: 'line',
+            data: {
+                labels: [], // Time labels (shared X axis)
+                datasets: [] // We will add these dynamically as data arrives
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 }, // Disable animation for performance
+                scales: {
+                    x: { display: false }, // Hide time labels for cleaner look
+                    y: { 
+                        grid: { color: '#444' },
+                        ticks: { color: '#ccc' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#ccc' } }
+                }
+            }
+        });
+
+        // --- 3. WebSocket Logic ---
+        const ws = new WebSocket('ws://localhost:3000/ws');
+        const statusSpan = document.getElementById('connection-status');
+
+        ws.onopen = () => {
+            statusSpan.innerText = 'Connected (Live)';
+            statusSpan.style.color = '#4BC0C0'; // Green
+        };
+
+        ws.onclose = () => {
+            statusSpan.innerText = 'Disconnected';
+            statusSpan.style.color = '#FF6384'; // Red
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Expected format: { ticker: "AAPL", price: 150.00, time: "..." }
+            updateChart(data.ticker, data.price, data.time);
+        };
+
+        // --- 4. Chart Update Helper ---
+        function updateChart(ticker, price, time) {
+            // Find if we already have a dataset for this ticker
+            let dataset = chart.data.datasets.find(ds => ds.label === ticker);
+
+            // If not, create it
+            if (!dataset) {
+                dataset = {
+                    label: ticker,
+                    data: [],
+                    borderColor: COLORS[ticker] || '#ffffff',
+                    borderWidth: 2,
+                    tension: 0.1, // Straight lines usually better for stocks
+                    pointRadius: 0 // Hide dots for cleaner line
+                };
+                chart.data.datasets.push(dataset);
+            }
+
+            // Add new data
+            dataset.data.push(price);
+            
+            // Add timestamp to labels (only need to do this once per "tick" strictly speaking, 
+            // but doing it here is a safe lazy way for a simple app)
+            if (chart.data.labels.length < dataset.data.length) {
+                // Format time slightly (e.g. 14:05:02)
+                const date = new Date(time);
+                const timeStr = date.toLocaleTimeString();
+                chart.data.labels.push(timeStr);
+            }
+
+            // Remove old data to create scrolling effect
+            if (dataset.data.length > MAX_DATA_POINTS) {
+                dataset.data.shift();
+                if (chart.data.labels.length > MAX_DATA_POINTS) {
+                    chart.data.labels.shift();
+                }
+            }
+
+            chart.update();
+        }
+    </script>
+</body>
+</html>
