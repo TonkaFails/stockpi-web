@@ -59,7 +59,7 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 0 }, // Disable animation for performance
+                animation: { duration: 0 },
                 scales: {
                     x: { display: false }, // Hide time labels for cleaner look
                     y: { 
@@ -74,7 +74,7 @@
         });
 
         // --- 3. WebSocket Logic ---
-        const ws = new WebSocket('ws://localhost:3000/ws');
+        const ws = new WebSocket('ws://versace:3000/ws');
         const statusSpan = document.getElementById('connection-status');
 
         ws.onopen = () => {
