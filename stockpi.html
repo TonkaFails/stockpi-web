@@ -3,128 +3,400 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Monitor</title>
+    <title>Trash Market Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        :root {
+            --bg: #000000;
+            --panel: #14161c;
+            --text: #e2e2e2;
+            --muted: #555;
+            --accent: #3dffaf;
+            --danger: #ff3d71;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            background-color: #1a1a1a;
-            color: #e0e0e0;
-            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 600px;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            padding: 20px;
+            cursor: none;
         }
-        h2 { margin-bottom: 5px; }
-        .status { font-size: 0.8em; color: #888; margin-bottom: 20px; }
+
+        header {
+            padding: 10px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        h1 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: var(--accent);
+        }
+
+        .status-bar {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+            color: var(--muted);
+        }
+
+        #status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: orange;
+        }
+
+        .price-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            padding: 10px 40px;
+        }
+
+        .price-card {
+            background: var(--panel);
+            padding: 12px 15px;
+            border-radius: 4px;
+            border-bottom: 2px solid var(--muted);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
+        .card-ticker {
+            font-size: 0.7rem;
+            color: var(--muted);
+            font-weight: 800;
+        }
+
+        .card-update {
+            font-size: 0.55rem;
+            color: #444;
+            font-family: monospace;
+        }
+
+        .card-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .main-display {
+            flex-grow: 1;
+            margin: 0 40px 10px 40px;
+            display: grid;
+            gap: 15px;
+            max-height: 380px;
+        }
+
         .chart-container {
+            background: var(--panel);
+            border-radius: 4px;
+            padding: 10px;
             position: relative;
-            height: 60vh;
-            width: 80vw;
-            background: #252525;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            min-height: 0;
+            transition: all 0.3s ease;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* --- rest api --- */
+        .depot-bar {
+            background: #080808;
+            border-top: 1px solid var(--panel);
+            padding: 8px 40px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: var(--muted);
+            overflow-x: auto;
+            white-space: nowrap;
+            align-items: center;
+        }
+        
+        .depot-bar::-webkit-scrollbar { display: none; }
+
+        .depot-item {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+        }
+
+        .depot-note {
+            color: #777;
+            text-transform: uppercase;
+        }
+
+        .depot-price {
+            color: var(--text);
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <h2>Trash Market Monitor</h2>
-    <div class="status">Status: <span id="connection-status" style="color: orange">Connecting...</span></div>
+    <header>
+        <div>
+            <h1>Trash Feed</h1>
+            <div class="status-bar">
+                <div id="status-dot"></div>
+                <span id="connection-status">Connecting...</span>
+            </div>
+        </div>
+        <div id="clock" style="font-family: monospace; color: var(--muted); font-size: 0.8rem;"></div>
+    </header>
 
-    <div class="chart-container">
-        <canvas id="stockChart"></canvas>
+    <div class="price-grid" id="price-grid"></div>
+
+    <div class="main-display" id="main-display"></div>
+
+    <div class="depot-bar" id="depot-footer">
+        Loading portfolio...
     </div>
 
     <script>
-        const MAX_DATA_POINTS = 50;
-        const CTX = document.getElementById('stockChart').getContext('2d');
+        // websocket
+        const MAX_DATA_POINTS = 40;
+        const COLOR_PALETTE = ['#36A2EB', '#FF6384', '#4BC0C0', '#FF9F40', '#9966FF', '#FFCD56', '#00d2ff', '#3dffaf'];
         
-        const COLORS = {
-            'URTH': '#36A2EB',
-            'AAPL': '#FF6384',
-            'VT':   '#4BC0C0',
-            'BTC/USD': '#32a852'
-        };
+        const priceGrid = document.getElementById('price-grid');
+        const mainDisplay = document.getElementById('main-display');
+        
+        const marketData = {};
+        const activeCharts = {};
+        let tickerCount = 0;
 
-        const chart = new Chart(CTX, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: []
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 0 },
-                scales: {
-                    x: { display: false },
-                    y: { 
-                        grid: { color: '#444' },
-                        ticks: { color: '#ccc' }
-                    }
-                },
-                plugins: {
-                    legend: { labels: { color: '#ccc' } }
-                }
-            }
-        });
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
 
-        // --- 3. WebSocket Logic ---
-        const ws = new WebSocket('ws://versace:3000/ws');
+        const ws = new WebSocket('ws://localhost:3000/ws');
         const statusSpan = document.getElementById('connection-status');
+        const statusDot = document.getElementById('status-dot');
 
         ws.onopen = () => {
-            statusSpan.innerText = 'Connected (Live)';
-            statusSpan.style.color = '#4BC0C0';
+            statusSpan.innerText = 'Network Live';
+            statusDot.style.background = '#3dffaf';
         };
 
         ws.onclose = () => {
-            statusSpan.innerText = 'Disconnected';
-            statusSpan.style.color = '#FF6384';
+            statusSpan.innerText = 'Network Dead :(';
+            statusDot.style.background = '#ff3d71';
         };
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
-            // Expected format: { ticker: "AAPL", price: 150.00, time: "..." }
-            updateChart(data.ticker, data.price, data.time);
+            processData(data.ticker, data.price, data.time);
         };
 
-        function updateChart(ticker, price, time) {
-            let dataset = chart.data.datasets.find(ds => ds.label === ticker);
+        function processData(ticker, price, time) {
+            const now = new Date(time);
+            const timeStr = now.getHours() + ":" + String(now.getMinutes()).padStart(2, '0') + ":" + String(now.getSeconds()).padStart(2, '0');
 
-            // If not, create it
-            if (!dataset) {
-                dataset = {
-                    label: ticker,
-                    data: [],
-                    borderColor: COLORS[ticker] || '#ffffff',
-                    borderWidth: 2,
-                    tension: 0.1, // Straight lines usually better for stocks
-                    pointRadius: 0 // Hide dots for cleaner line
+            if (!marketData[ticker]) {
+                marketData[ticker] = {
+                    prices: [],
+                    labels: [],
+                    color: COLOR_PALETTE[Object.keys(marketData).length % COLOR_PALETTE.length]
                 };
-                chart.data.datasets.push(dataset);
+                tickerCount++;
+                createPriceCard(ticker);
+                rebuildLayout();
             }
 
-            dataset.data.push(price);
-            
-            if (chart.data.labels.length < dataset.data.length) {
-                const date = new Date(time);
-                const timeStr = date.toLocaleTimeString();
-                chart.data.labels.push(timeStr);
+            const store = marketData[ticker];
+            store.prices.push(price);
+            store.labels.push(timeStr);
+
+            if (store.prices.length > MAX_DATA_POINTS) {
+                store.prices.shift();
+                store.labels.shift();
             }
 
-            if (dataset.data.length > MAX_DATA_POINTS) {
-                dataset.data.shift();
-                if (chart.data.labels.length > MAX_DATA_POINTS) {
-                    chart.data.labels.shift();
-                }
+            updateUI(ticker, price, timeStr);
+            if (activeCharts[ticker]) {
+                activeCharts[ticker].update('none');
+            } else if (activeCharts['global']) {
+                activeCharts['global'].update('none');
             }
-
-            chart.update();
         }
+
+        function rebuildLayout() {
+            Object.values(activeCharts).forEach(c => c.destroy());
+            for (const key in activeCharts) delete activeCharts[key];
+            mainDisplay.innerHTML = '';
+
+            const tickers = Object.keys(marketData);
+
+            if (tickerCount === 1) {
+                mainDisplay.style.gridTemplateColumns = '1fr';
+                const container = createChartContainer(tickers[0]);
+                activeCharts['global'] = createChart(container.querySelector('canvas'), tickers, true);
+            } 
+            else if (tickerCount === 2) {
+                mainDisplay.style.gridTemplateColumns = '1fr 1fr';
+                tickers.forEach(t => {
+                    const container = createChartContainer(t);
+                    activeCharts[t] = createChart(container.querySelector('canvas'), [t], true);
+                });
+            } 
+            else {
+                const cols = Math.min(tickerCount, 4);
+                mainDisplay.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+                tickers.forEach(t => {
+                    const container = createChartContainer(t);
+                    activeCharts[t] = createChart(container.querySelector('canvas'), [t], false);
+                });
+            }
+        }
+
+        function createChartContainer(id) {
+            const div = document.createElement('div');
+            div.className = 'chart-container';
+            div.innerHTML = `<canvas id="chart-${id}"></canvas>`;
+            mainDisplay.appendChild(div);
+            return div;
+        }
+
+        function createChart(ctx, tickers, showDetails) {
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: marketData[tickers[0]].labels,
+                    datasets: tickers.map(t => ({
+                        label: t,
+                        data: marketData[t].prices,
+                        borderColor: marketData[t].color,
+                        borderWidth: showDetails ? 2 : 1.5,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: !showDetails,
+                        backgroundColor: !showDetails ? marketData[t].color + '10' : 'transparent'
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: { display: showDetails, grid: { display: false }, ticks: { color: '#333', font: { size: 9 } } },
+                        y: { 
+                            display: showDetails, 
+                            position: 'right', 
+                            grid: { color: '#1a1a1a' }, 
+                            ticks: { color: '#555', font: { family: 'monospace', size: 9 } } 
+                        }
+                    },
+                    plugins: {
+                        legend: { 
+                            display: showDetails, 
+                            labels: { color: '#777', boxWidth: 8, font: { size: 10 } } 
+                        }
+                    }
+                }
+            });
+        }
+
+        function createPriceCard(ticker) {
+            const card = document.createElement('div');
+            card.className = 'price-card';
+            card.id = `card-${ticker}`;
+            card.style.borderBottomColor = marketData[ticker].color;
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="card-ticker">${ticker}</div>
+                    <div class="card-update" id="upd-${ticker}">--:--:--</div>
+                </div>
+                <div class="card-value" id="val-${ticker}">---</div>
+            `;
+            priceGrid.appendChild(card);
+        }
+
+        function updateUI(ticker, price, timeStr) {
+            const valEl = document.getElementById(`val-${ticker}`);
+            const updEl = document.getElementById(`upd-${ticker}`);
+            if (!valEl) return;
+
+            const oldPrice = parseFloat(valEl.innerText.replace(/,/g, ''));
+            valEl.innerText = price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            updEl.innerText = timeStr;
+            
+            if (!isNaN(oldPrice) && oldPrice !== price) {
+                const color = price > oldPrice ? '#3dffaf' : '#ff3d71';
+                valEl.style.color = color;
+                setTimeout(() => { valEl.style.color = 'var(--text)'; }, 600);
+            }
+        }
+
+        // REST API
+        const DEPOT_API_URL = 'http://127.0.0.1:5000/api/depot';
+        const depotFooter = document.getElementById('depot-footer');
+        
+        // 60 mins
+        const REFRESH_INTERVAL_MS = 60 * 60 * 1000; 
+
+        async function fetchDepotData() {
+            try {
+                const response = await fetch(DEPOT_API_URL);
+                if (!response.ok) throw new Error('API Error');
+                
+                const stocks = await response.json();
+                renderDepot(stocks);
+            } catch (error) {
+                console.error('Failed to fetch depot data:', error);
+                depotFooter.innerHTML = '<span style="color:var(--danger)">Depot Data Unavailable</span>';
+            }
+        }
+
+        function renderDepot(stocks) {
+            depotFooter.innerHTML = ''; 
+            
+            stocks.forEach(stock => {
+                if (!stock.Note || typeof stock.price_eur !== 'number' || isNaN(stock.price_eur)) {
+                    return;
+                }
+
+                const item = document.createElement('div');
+                item.className = 'depot-item';
+                
+                item.innerHTML = `
+                    <span class="depot-note">${stock.Note}</span>
+                    <span class="depot-price">${stock.price_eur.toFixed(2)} €</span>
+                `;
+                depotFooter.appendChild(item);
+            });
+        }
+
+        // update interval
+        fetchDepotData();
+        setInterval(fetchDepotData, REFRESH_INTERVAL_MS);
+
     </script>
 </body>
 </html>
