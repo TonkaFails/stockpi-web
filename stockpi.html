@@ -355,7 +355,7 @@
         }
 
         // REST API
-        const DEPOT_API_URL = 'http://127.0.0.1:5000/api/depot';
+        const DEPOT_API_URL = 'http://127.0.0.1:5001/api/depot';
         const depotFooter = document.getElementById('depot-footer');
         
         // 60 mins
@@ -378,7 +378,7 @@
             depotFooter.innerHTML = ''; 
             
             stocks.forEach(stock => {
-                if (!stock.Note || typeof stock.price_eur !== 'number' || isNaN(stock.price_eur)) {
+                if (!stock.Note || typeof stock.total_eur !== 'number' || isNaN(stock.total_eur)) {
                     return;
                 }
 
@@ -387,7 +387,7 @@
                 
                 item.innerHTML = `
                     <span class="depot-note">${stock.Note}</span>
-                    <span class="depot-price">${stock.price_eur.toFixed(2)} €</span>
+                    <span class="depot-price">${stock.total_eur.toFixed(2)} €</span>
                 `;
                 depotFooter.appendChild(item);
             });
