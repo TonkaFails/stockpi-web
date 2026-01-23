@@ -10,7 +10,7 @@
             --bg: #000000;
             --panel: #14161c;
             --text: #e2e2e2;
-            --muted: #555;
+            --muted: #868484;
             --accent: #3dffaf;
             --danger: #ff3d71;
         }
@@ -91,8 +91,8 @@
         }
 
         .card-update {
-            font-size: 0.55rem;
-            color: #444;
+            font-size: 0.7rem;
+            color: var(--muted);
             font-family: monospace;
         }
 
@@ -107,7 +107,7 @@
             margin: 0 40px 10px 40px;
             display: grid;
             gap: 15px;
-            max-height: 380px;
+            max-height: 320px;
         }
 
         .chart-container {
@@ -169,7 +169,7 @@
                 <span id="connection-status">Connecting...</span>
             </div>
         </div>
-        <div id="clock" style="font-family: monospace; color: var(--muted); font-size: 0.8rem;"></div>
+        <div id="clock" style="font-family: monospace; color: var(--muted); font-size: 1rem;"></div>
     </header>
 
     <div class="price-grid" id="price-grid"></div>
@@ -257,13 +257,13 @@
             if (tickerCount === 1) {
                 mainDisplay.style.gridTemplateColumns = '1fr';
                 const container = createChartContainer(tickers[0]);
-                activeCharts['global'] = createChart(container.querySelector('canvas'), tickers, true);
+                activeCharts['global'] = createChart(container.querySelector('canvas'), tickers, false);
             } 
             else if (tickerCount === 2) {
                 mainDisplay.style.gridTemplateColumns = '1fr 1fr';
                 tickers.forEach(t => {
                     const container = createChartContainer(t);
-                    activeCharts[t] = createChart(container.querySelector('canvas'), [t], true);
+                    activeCharts[t] = createChart(container.querySelector('canvas'), [t], false);
                 });
             } 
             else {
@@ -315,7 +315,7 @@
                     },
                     plugins: {
                         legend: { 
-                            display: showDetails, 
+                            display: false, 
                             labels: { color: '#777', boxWidth: 8, font: { size: 10 } } 
                         }
                     }
@@ -358,8 +358,8 @@
         const DEPOT_API_URL = 'http://127.0.0.1:5001/api/depot';
         const depotFooter = document.getElementById('depot-footer');
         
-        // 60 mins
-        const REFRESH_INTERVAL_MS = 60 * 60 * 1000; 
+        // 15 mins
+        const REFRESH_INTERVAL_MS = 60 * 15 * 1000; 
 
         async function fetchDepotData() {
             try {
